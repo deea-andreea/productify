@@ -99,14 +99,30 @@ that touches either side of it.
 
 ## Commands
 
-```bash
+Both laptops are Windows, so PowerShell is the default shell. `VAR=1 cmd` is bash
+syntax and fails in PowerShell with `The term 'MOCK=1' is not recognized`.
+
+```powershell
 pip install -r requirements.txt
-MOCK=1 uvicorn app.main:app --reload          # normal development
-uvicorn app.main:app --reload                 # real API calls (MOCK defaults to true in config)
+uvicorn app.main:app --reload                 # mock mode — MOCK defaults to True
+$env:MOCK=0; uvicorn app.main:app --reload    # REAL API calls; needs a key in .env
+uvicorn app.main:app --reload --host 0.0.0.0  # reachable from a phone on the same WiFi
 python -m app.render.preview fixtures/stapler.vc.json --open   # template iteration
 python -m app.render.preview --all            # compare all four tones
 python -m eval.run_batch --photos fixtures/photos --tones all   # quality report
 ```
+
+Bash/macOS equivalent for the two that differ:
+
+```bash
+MOCK=0 uvicorn app.main:app --reload
+uvicorn app.main:app --reload --host 0.0.0.0
+```
+
+**`MOCK` defaults to `True`** (`app/config.py`), so plain `uvicorn app.main:app` runs
+mocked and makes **no** API calls — that is the safe default, not the real one. Real calls
+need `MOCK=0` **and** a key in `.env`. Check which mode you are in at `GET /health`, which
+returns `{"ok": true, "mock": true|false}`, and at startup, which logs `mock=...`.
 
 ## Scope discipline
 

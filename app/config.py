@@ -1,8 +1,16 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# The repo root, resolved from this file. Everything on disk is anchored here, so
+# the app behaves identically no matter which directory uvicorn was launched from.
+# A CWD-relative .env would silently not load, leaving MOCK at its default of True
+# and turning every real model call into a mock — mid-demo, with no error.
+ROOT = Path(__file__).resolve().parent.parent
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=ROOT / ".env", extra="ignore")
 
     # Blank by default on purpose: the app must still boot and serve the gallery
     # with no key present. Station 2 runs this way all day.

@@ -5,7 +5,7 @@ import string
 from pathlib import Path
 from typing import Any
 
-from app.config import settings
+from app.config import ROOT, settings
 from app.models import ContentPack
 
 _SUFFIX_ALPHABET = string.ascii_lowercase + string.digits
@@ -19,7 +19,10 @@ def slugify(brand_name: str) -> str:
 
 
 def out_dir() -> Path:
-    return Path(settings.OUT_DIR)
+    """Anchored to the repo root. An absolute OUT_DIR is honoured as-is, so eval
+    scripts can write elsewhere without fighting this."""
+    p = Path(settings.OUT_DIR)
+    return p if p.is_absolute() else ROOT / p
 
 
 def pitch_dir(slug: str) -> Path:

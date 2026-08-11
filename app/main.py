@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -7,13 +6,11 @@ from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from app import config, storage
-from app.config import settings
+from app.config import ROOT, settings
 from app.models import Tone
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("productify")
-
-ROOT = Path(__file__).resolve().parent.parent
 
 app = FastAPI(title="Productify", version="0.1.0")
 
@@ -36,8 +33,9 @@ app.mount("/web", StaticFiles(directory=ROOT / "web", html=True), name="web")
 # Every route below returns hardcoded data shaped exactly like contracts/api.md.
 # T1-T4 replace the bodies; the shapes do not change.
 
-STUB_SUMMARY = {
-    "slug": "clipwell-a3f9k",
+STUB_SLUG = "clipwell-a3f9k"
+
+STUB_FIELDS = {
     "status": "ready",
     "logo_status": "pending",
     "tone": "vc",
@@ -45,11 +43,21 @@ STUB_SUMMARY = {
     "tagline": "The last stapler you will ever onboard.",
     "object": "stapler",
     "created_at": "2026-08-11T09:41:02Z",
-    "pitch_url": "/pitch/clipwell-a3f9k",
-    "download_url": "/pitch/clipwell-a3f9k/download",
-    "thumb_url": "/pitch/clipwell-a3f9k/photo.jpg",
     "elapsed_ms": 18420,
 }
+
+
+def summary(slug: str, **overrides) -> dict:
+    """A PitchSummary per contracts/api.md. The three URLs are always derived from
+    the slug so they can never disagree with it — Station 2 polls this shape."""
+    return {
+        **STUB_FIELDS,
+        "slug": slug,
+        "pitch_url": f"/pitch/{slug}",
+        "download_url": f"/pitch/{slug}/download",
+        "thumb_url": f"/pitch/{slug}/photo.jpg",
+        **overrides,
+    }
 
 STUB_PAGE = (
     "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">"
@@ -85,19 +93,19 @@ async def create_pitch(image: UploadFile = File(...), tone: str = Form(...)) -> 
 
     # STUB — T4 wires vision -> content -> render -> save, plus the logo background task.
     log.info("stub POST /api/pitch tone=%s filename=%s", tone, image.filename)
-    return {**STUB_SUMMARY, "tone": tone}
+    return summary(STUB_SLUG, tone=tone)
 
 
 @app.get("/api/pitch/{slug}")
 async def get_pitch(slug: str) -> dict:
     # STUB — T4 returns the live meta.json so the frontend can poll logo_status.
-    return {**STUB_SUMMARY, "slug": slug}
+    return summary(slug)
 
 
 @app.get("/api/gallery")
 async def gallery() -> dict:
     # STUB — the real list comes from storage.list_pitches().
-    items = [STUB_SUMMARY]
+    items = [summary(STUB_SLUG)]
     return {"count": len(items), "items": items}
 
 

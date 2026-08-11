@@ -1,0 +1,56 @@
+{
+  "vision": {
+    "object": "stapler",
+    "quirks": [
+      "a chipped corner near the base",
+      "a faded coffee-ring stain on the top plate",
+      "a sticker-residue ghost where a price tag used to be"
+    ],
+    "material": "red painted steel and plastic",
+    "condition": "well-loved, three years of desk duty"
+  },
+  "brand": {
+    "name": "Staple.io",
+    "slug_hint": "staple-io",
+    "personality": "sleek, confident, disruptive"
+  },
+  "tagline": "Fastening, reimagined.",
+  "hero": {
+    "headline": "The stapler that scales with you.",
+    "subhead": "We took a stapler — chipped corner, coffee ring and all — and asked: what if binding paper was a platform?",
+    "cta_label": "Request Early Access"
+  },
+  "features": [
+    { "title": "Battle-Tested Reliability", "body": "That chipped corner near the base is three years of enterprise-grade uptime, not a flaw.", "icon_hint": "shield" },
+    { "title": "Infinite Reach", "body": "Long-arm design binds documents 40% larger than legacy staplers.", "icon_hint": "bolt" },
+    { "title": "Provenance You Can See", "body": "The coffee-ring stain on the top plate is a permanent record of every all-nighter it survived.", "icon_hint": "chart" }
+  ],
+  "pricing": [
+    { "tier": "Starter", "price": "$0", "period": "/month", "bullets": ["1 stapler", "Community support"], "highlighted": false },
+    { "tier": "Pro", "price": "$19", "period": "/seat/month", "bullets": ["Unlimited staples", "Priority refills", "99.9% SLA"], "highlighted": true },
+    { "tier": "Enterprise", "price": "Contact us", "period": "", "bullets": ["Fleet management", "Dedicated success manager"], "highlighted": false }
+  ],
+  "testimonials": [
+    { "quote": "We 10x'd our binding throughput in a single quarter.", "author": "Jamie Reyes", "role": "Head of Ops, a Notion-esque startup" },
+    { "quote": "Finally, stapling that scales.", "author": "Priya Nair", "role": "CTO, StackFlow" }
+  ],
+  "cta": {
+    "headline": "Ready to disrupt your desk drawer?",
+    "button_label": "Request Early Access",
+    "footnote": "No credit card required. Cancel your paper jams anytime."
+  },
+  "theme": {
+    "palette": {
+      "bg": "#0B0F19",
+      "surface": "#151B2E",
+      "text": "#F3F4F6",
+      "muted": "#9CA3AF",
+      "accent": "#4F46E5",
+      "accent_contrast": "#FFFFFF"
+    },
+    "font_pair": "geometric",
+    "radius": "soft",
+    "mood": "minimal"
+  },
+  "logo_prompt": "Flat vector mark for 'Staple.io', a sleek confident disruptive brand. Primary accent #4F46E5 on white. No text, no letters, no words. Simple, iconic, centered, legible at 32px."
+}

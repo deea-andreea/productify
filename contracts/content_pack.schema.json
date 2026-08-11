@@ -1,0 +1,137 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ContentPack",
+  "description": "Structured Outputs schema for the INVENT step. Loaded at runtime by app/pipeline/content.py — do not duplicate this in Python. Strict mode does NOT support pattern/minItems/maxItems/minLength/format, so those rules are enforced in Python after parsing (see contracts/handoff.md).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["vision", "brand", "tagline", "hero", "features", "pricing", "testimonials", "cta", "theme", "logo_prompt"],
+  "properties": {
+    "vision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["object", "quirks", "material", "condition"],
+      "properties": {
+        "object": { "type": "string", "description": "What the object is, e.g. 'stapler'" },
+        "quirks": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "3-5 specifically observed details, not generic adjectives"
+        },
+        "material": { "type": "string" },
+        "condition": { "type": "string" }
+      }
+    },
+    "brand": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "slug_hint", "personality"],
+      "properties": {
+        "name": { "type": "string" },
+        "slug_hint": { "type": "string", "description": "Lowercase, hyphen-friendly hint for the slug" },
+        "personality": { "type": "string" }
+      }
+    },
+    "tagline": { "type": "string" },
+    "hero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headline", "subhead", "cta_label"],
+      "properties": {
+        "headline": { "type": "string" },
+        "subhead": { "type": "string" },
+        "cta_label": { "type": "string" }
+      }
+    },
+    "features": {
+      "type": "array",
+      "description": "Enforce exactly 3 in Python (truncate/pad-by-duplicating-last).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["title", "body", "icon_hint"],
+        "properties": {
+          "title": { "type": "string" },
+          "body": { "type": "string" },
+          "icon_hint": {
+            "type": "string",
+            "enum": ["bolt", "shield", "sparkle", "chart", "leaf", "clock", "globe", "heart", "lock", "star", "cube", "wave"]
+          }
+        }
+      }
+    },
+    "pricing": {
+      "type": "array",
+      "description": "Enforce exactly 3 in Python; exactly one highlighted=true (force the middle one otherwise).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tier", "price", "period", "bullets", "highlighted"],
+        "properties": {
+          "tier": { "type": "string" },
+          "price": { "type": "string" },
+          "period": { "type": "string" },
+          "bullets": { "type": "array", "items": { "type": "string" } },
+          "highlighted": { "type": "boolean" }
+        }
+      }
+    },
+    "testimonials": {
+      "type": "array",
+      "description": "Enforce exactly 2 in Python.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["quote", "author", "role"],
+        "properties": {
+          "quote": { "type": "string" },
+          "author": { "type": "string" },
+          "role": { "type": "string" }
+        }
+      }
+    },
+    "cta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["headline", "button_label", "footnote"],
+      "properties": {
+        "headline": { "type": "string" },
+        "button_label": { "type": "string" },
+        "footnote": { "type": "string" }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["palette", "font_pair", "radius", "mood"],
+      "properties": {
+        "palette": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["bg", "surface", "text", "muted", "accent", "accent_contrast"],
+          "description": "Each value MUST match ^#[0-9a-fA-F]{6}$, validated in Python (strict mode has no pattern support). If ANY fails, replace the ENTIRE palette with DEFAULT_PALETTE.",
+          "properties": {
+            "bg": { "type": "string" },
+            "surface": { "type": "string" },
+            "text": { "type": "string" },
+            "muted": { "type": "string" },
+            "accent": { "type": "string" },
+            "accent_contrast": { "type": "string" }
+          }
+        },
+        "font_pair": {
+          "type": "string",
+          "enum": ["geometric", "editorial", "technical", "condensed", "humanist", "rounded"]
+        },
+        "radius": { "type": "string", "enum": ["sharp", "soft", "pill"] },
+        "mood": {
+          "type": "string",
+          "enum": ["minimal", "opulent", "loud", "earnest", "corporate", "playful"]
+        }
+      }
+    },
+    "logo_prompt": {
+      "type": "string",
+      "description": "Prompt for the BRAND step (gpt-image-1). Flat vector mark, no text/letters, injects brand.personality and theme.palette.accent."
+    }
+  }
+}

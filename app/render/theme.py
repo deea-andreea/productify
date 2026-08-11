@@ -159,12 +159,12 @@ def contrast_ratio(hex_a: str, hex_b: str) -> float:
     return (lighter + 0.05) / (darker + 0.05)
 
 
-def ensure_contrast(fg: str, bg: str) -> str:
-    """Real WCAG contrast. If fg on bg falls below 4.5:1, fall back to
+def ensure_contrast(fg: str, bg: str, min_ratio: float = 4.5) -> str:
+    """Real WCAG contrast. If fg on bg falls below min_ratio, fall back to
     whichever of black/white contrasts better against bg — a model that
     picks a pale grey accent must not be able to ship unreadable text."""
     try:
-        if contrast_ratio(fg, bg) >= 4.5:
+        if contrast_ratio(fg, bg) >= min_ratio:
             return fg
     except ValueError:
         pass
@@ -172,6 +172,31 @@ def ensure_contrast(fg: str, bg: str) -> str:
         return "#000000" if contrast_ratio("#000000", bg) >= contrast_ratio("#FFFFFF", bg) else "#FFFFFF"
     except ValueError:
         return "#000000"
+
+
+def _mix(a: str, b: str, weight: float) -> str:
+    """Blend a toward b. weight=0 returns a, weight=1 returns b."""
+    try:
+        ar, ag, ab = _hex_to_rgb(a)
+        br, bg_, bb = _hex_to_rgb(b)
+    except ValueError:
+        return a
+    mixed = (round(c1 + (c2 - c1) * weight) for c1, c2 in ((ar, br), (ag, bg_), (ab, bb)))
+    r, g, b = mixed
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def ensure_muted(muted: str, text: str, bg: str) -> str:
+    """Secondary text needs a lower floor than body copy — 4.5:1 would erase
+    the muted look entirely — but it still has to be readable. Below 3:1 we
+    rebuild it by blending the (already corrected) text colour toward the
+    background, which stays visibly muted without going invisible."""
+    try:
+        if contrast_ratio(muted, bg) >= 3.0:
+            return muted
+    except ValueError:
+        pass
+    return _mix(ensure_contrast(text, bg), bg, 0.35)
 
 
 def _darken(hex_color: str, amount: float) -> str:
@@ -197,17 +222,21 @@ def build_css_vars(theme: Theme) -> dict[str, str]:
     radii = RADIUS_SCALES.get(theme.radius, RADIUS_SCALES["soft"])
     mood = MOOD_STYLES.get(theme.mood, MOOD_STYLES["corporate"])
 
+    text = ensure_contrast(p.text, p.bg)
+
     return {
         "--pf-bg": p.bg,
         "--pf-surface": p.surface,
-        "--pf-text": ensure_contrast(p.text, p.bg),
+        "--pf-text": text,
         "--pf-text-on-surface": ensure_contrast(p.text, p.surface),
-        "--pf-muted": p.muted,
+        "--pf-muted": ensure_muted(p.muted, p.text, p.bg),
         "--pf-accent": p.accent,
         "--pf-accent-hover": _darken(p.accent, 0.12),
         "--pf-accent-soft": _rgba(p.accent, 0.12),
         "--pf-button-label": ensure_contrast(p.accent_contrast, p.accent),
-        "--pf-border": _rgba(p.text, 0.12),
+        # derived from the corrected text, not the raw palette value: a pale
+        # text colour would otherwise leave every border invisible
+        "--pf-border": _rgba(text, 0.18),
         "--pf-font-heading": fonts["heading"],
         "--pf-font-body": fonts["body"],
         "--pf-heading-weight": fonts["heading_weight"],

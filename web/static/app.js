@@ -401,9 +401,24 @@
     chooseAnotherBtn.disabled = busy;
   }
 
+  // contracts/api.md promises `detail` is a human-readable string, but FastAPI's
+  // own 422 handler answers with a list of validation objects. Stringifying that
+  // naively puts "[object Object]" on screen, which is worse than a stack trace.
+  function detailToMessage(detail) {
+    if (typeof detail === "string" && detail) return detail;
+    if (Array.isArray(detail)) {
+      var parts = detail
+        .map(function (d) { return d && typeof d.msg === "string" ? d.msg : null; })
+        .filter(Boolean);
+      if (parts.length) return parts.join(". ");
+    }
+    return "Something went wrong. Try again.";
+  }
+
   function postPitch(blob, tone) {
     var form = new FormData();
-    form.append("photo", blob, "photo.jpg");
+    // Field name is "image" per contracts/api.md — not "photo".
+    form.append("image", blob, "photo.jpg");
     form.append("tone", tone);
 
     return fetch("/api/pitch", { method: "POST", body: form })
@@ -425,8 +440,7 @@
               return {};
             })
             .then(function (body) {
-              var msg = (body && body.detail) || "Something went wrong. Try again.";
-              var e = new Error(msg);
+              var e = new Error(detailToMessage(body && body.detail));
               e.kind = "http-" + resp.status;
               throw e;
             });
@@ -510,11 +524,14 @@
 
   function showResult(data) {
     resultCard.hidden = false;
-    resultBrand.textContent = data.brand_name || "Your new company";
-    resultTagline.hidden = true;
-    resultTagline.textContent = "";
+    // Field names are the PitchSummary of contracts/api.md: brand, tagline,
+    // pitch_url. The slug fallback keeps the link usable even if a field is
+    // missing — an "Open the pitch" button that goes nowhere kills the demo.
+    resultBrand.textContent = data.brand || "Your new company";
+    resultTagline.textContent = data.tagline || "";
+    resultTagline.hidden = !data.tagline;
     logoStatusNote.hidden = true;
-    openPitchLink.href = data.url;
+    openPitchLink.href = data.pitch_url || "/pitch/" + encodeURIComponent(data.slug);
   }
   function hideResult() {
     resultCard.hidden = true;

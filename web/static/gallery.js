@@ -96,7 +96,13 @@
     var img = document.createElement("img");
     img.loading = "lazy";
     img.alt = "";
-    img.src = item.thumb_url || "";
+    // A missing thumbnail must not put a broken-image glyph on the projector.
+    img.addEventListener("error", function () {
+      img.hidden = true;
+      thumbFrame.classList.add("thumb-frame-empty");
+    });
+    if (item.thumb_url) img.src = item.thumb_url;
+    else thumbFrame.classList.add("thumb-frame-empty");
     thumbFrame.appendChild(img);
     article.appendChild(thumbFrame);
 
@@ -108,7 +114,7 @@
 
     var h3 = document.createElement("h3");
     h3.className = "gallery-brand";
-    h3.textContent = item.brand_name || "Unnamed";
+    h3.textContent = item.brand || "Unnamed";
     top.appendChild(h3);
 
     var badge = document.createElement("span");
@@ -132,7 +138,8 @@
     actions.className = "gallery-actions";
 
     var openLink = document.createElement("a");
-    openLink.href = item.url;
+    // PitchSummary calls it pitch_url (contracts/api.md); fall back to the slug.
+    openLink.href = item.pitch_url || "/pitch/" + encodeURIComponent(item.slug);
     openLink.target = "_blank";
     openLink.rel = "noopener";
     openLink.className = "btn btn-ghost btn-small";
@@ -140,7 +147,7 @@
     actions.appendChild(openLink);
 
     var dlLink = document.createElement("a");
-    dlLink.href = item.download_url;
+    dlLink.href = item.download_url || "/pitch/" + encodeURIComponent(item.slug) + "/download";
     dlLink.setAttribute("download", "");
     dlLink.className = "btn btn-ghost btn-small";
     dlLink.textContent = "Download .html";
@@ -260,7 +267,10 @@
       .then(function (data) {
         if (data === null) return;
         hideStatus();
-        items = Array.isArray(data) ? data.slice() : [];
+        // GET /api/gallery answers {count, items} per contracts/api.md.
+        if (data && Array.isArray(data.items)) items = data.items.slice();
+        else if (Array.isArray(data)) items = data.slice();
+        else items = [];
         // Newest first is guaranteed by the API, but sort defensively.
         items.sort(function (a, b) {
           return new Date(b.created_at) - new Date(a.created_at);

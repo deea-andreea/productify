@@ -17,6 +17,11 @@ img {
   max-width: 100%;
   display: block;
 }
+/* The JS toggles visibility with the `hidden` attribute throughout. Any later
+   `display` rule would silently beat it, so pin it here once. */
+[hidden] {
+  display: none !important;
+}
 button {
   font: inherit;
 }
@@ -537,6 +542,18 @@ html.presenter-mode .presenter-hide {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+/* Stands in for a thumbnail that failed to load, so the card still reads as a
+   card instead of showing a broken-image glyph. */
+.thumb-frame-empty {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, var(--surface-2), var(--surface-1));
+}
+.thumb-frame-empty::after {
+  content: "🏭";
+  font-size: 2rem;
+  opacity: 0.35;
 }
 
 .gallery-card-body {

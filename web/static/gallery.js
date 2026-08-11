@@ -13,6 +13,7 @@
   var statusMessage = document.getElementById("gallery-status-message");
   var retryBtn = document.getElementById("gallery-retry-btn");
   var heroNumber = document.getElementById("hero-counter-number");
+  var heroLabel = document.getElementById("hero-counter-label");
   var chips = Array.prototype.slice.call(document.querySelectorAll(".chip"));
 
   var REFRESH_MS = 10000;
@@ -158,13 +159,20 @@
     return article;
   }
 
+  // Cards already on screen, by slug, so a refresh can reuse them.
+  var cardBySlug = Object.create(null);
+
+  // Reconciles the grid against `items` instead of clearing innerHTML. The
+  // gallery refreshes every 10s while projected; rebuilding every card made
+  // thumbnails re-decode and flash, disturbed scrolling, and dropped keyboard
+  // focus from Open/Download links mid-interaction.
   function renderGrid() {
     var filtered =
       currentFilter === "all" ? items : items.filter(function (i) { return i.tone === currentFilter; });
 
-    grid.innerHTML = "";
-
     if (filtered.length === 0) {
+      cardBySlug = Object.create(null);
+      grid.innerHTML = "";
       grid.classList.add("is-empty");
       var empty = document.createElement("div");
       empty.className = "empty-state";
@@ -179,17 +187,44 @@
       return;
     }
 
+    // Drop the empty state / skeletons if they are what's currently in there.
+    if (grid.classList.contains("is-empty") || grid.querySelector(".skeleton")) {
+      grid.innerHTML = "";
+      cardBySlug = Object.create(null);
+    }
     grid.classList.remove("is-empty");
+
+    var wanted = Object.create(null);
     filtered.forEach(function (item) {
-      var card = buildCard(item);
-      if (firstLoadDone && !previousSlugs.has(item.slug)) {
-        card.classList.add("is-new");
-        var cleanupDelay = PREFERS_REDUCED_MOTION ? 2200 : 1800;
-        setTimeout(function () {
-          card.classList.remove("is-new");
-        }, cleanupDelay);
+      wanted[item.slug] = true;
+    });
+
+    // Remove cards that are gone or filtered out.
+    Object.keys(cardBySlug).forEach(function (slug) {
+      if (!wanted[slug]) {
+        var stale = cardBySlug[slug];
+        if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+        delete cardBySlug[slug];
       }
-      grid.appendChild(card);
+    });
+
+    // Insert new cards and fix ordering, reusing existing nodes untouched.
+    filtered.forEach(function (item, index) {
+      var card = cardBySlug[item.slug];
+      if (!card) {
+        card = buildCard(item);
+        cardBySlug[item.slug] = card;
+        if (firstLoadDone && !previousSlugs.has(item.slug)) {
+          card.classList.add("is-new");
+          var cleanupDelay = PREFERS_REDUCED_MOTION ? 2200 : 1800;
+          setTimeout(function () {
+            card.classList.remove("is-new");
+          }, cleanupDelay);
+        }
+      }
+      if (grid.children[index] !== card) {
+        grid.insertBefore(card, grid.children[index] || null);
+      }
     });
   }
 
@@ -205,11 +240,20 @@
     });
   }
 
+  // Counts every pitch in the gallery, matching the "All" chip. Filtering to
+  // today's date made the two numbers disagree: a pre-generated backup gallery
+  // or a fixture-seeded pitch (the committed bundles carry a fixed created_at)
+  // showed visible cards while the big counter read 0.
   function updateHeroCounter() {
-    var todayCount = items.filter(function (i) {
-      return isToday(i.created_at);
-    }).length;
-    heroNumber.textContent = String(todayCount);
+    heroNumber.textContent = String(items.length);
+    if (heroLabel) {
+      var anyOlder = items.some(function (i) {
+        return i.created_at && !isToday(i.created_at);
+      });
+      heroLabel.textContent = anyOlder
+        ? items.length === 1 ? "company founded" : "companies founded"
+        : items.length === 1 ? "company founded today" : "companies founded today";
+    }
   }
 
   function showStatus(message) {

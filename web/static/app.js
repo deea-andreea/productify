@@ -55,6 +55,7 @@
   var inFlight = false;
   var pollTimer = null;
   var pollVisibilityHandler = null;
+  var pollDone = false; // true once the logo resolved or we gave up — do not resume
 
   // ============================================================
   // Photo capture + client-side resize
@@ -455,6 +456,7 @@
 
   function startPolling(slug) {
     stopPolling();
+    pollDone = false;
     var startTs = Date.now();
     var INTERVAL_MS = 1500;
     var MAX_MS = 40000;
@@ -493,18 +495,34 @@
     }
 
     pollTimer = setInterval(tick, INTERVAL_MS);
+    // Pause while the tab is hidden so we don't hammer the backend, but RESUME
+    // when it comes back. "Open the pitch" opens a new tab, which hides this
+    // one — without the resume the status would stay stuck on "still
+    // rendering" forever even after the logo landed.
     pollVisibilityHandler = function () {
-      if (document.hidden) stopPolling();
+      if (document.hidden) {
+        pausePolling();
+      } else if (!pollTimer && !pollDone) {
+        pollTimer = setInterval(tick, INTERVAL_MS);
+        tick();
+      }
     };
     document.addEventListener("visibilitychange", pollVisibilityHandler);
     tick();
   }
 
-  function stopPolling() {
+  // Clears the timer but keeps the visibilitychange listener, so polling can
+  // pick up again when the tab is refocused.
+  function pausePolling() {
     if (pollTimer) {
       clearInterval(pollTimer);
       pollTimer = null;
     }
+  }
+
+  function stopPolling() {
+    pollDone = true;
+    pausePolling();
     if (pollVisibilityHandler) {
       document.removeEventListener("visibilitychange", pollVisibilityHandler);
       pollVisibilityHandler = null;

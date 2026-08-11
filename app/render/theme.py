@@ -4,7 +4,9 @@ properties template.html consumes. This is where four tones become four
 companies: mood drives STRUCTURE (padding, shadow, alignment), not just color.
 """
 
-from app.models import Theme
+import re
+
+from app.models import Palette, Theme
 
 FONT_PAIRS: dict[str, dict[str, str]] = {
     "geometric": {
@@ -216,8 +218,25 @@ def _rgba(hex_color: str, alpha: float) -> str:
     return f"rgba({r},{g},{b},{alpha})"
 
 
+_HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+
+
+def _safe_palette(palette: Palette) -> Palette:
+    """Station 1 guarantees every palette value is a valid 6-digit hex, but the
+    Pydantic model does not enforce it and preview.py renders hand-written
+    bundles through the same code. These values are emitted into the <style>
+    block with |safe, so a value like '#000</style><script>' would escape the
+    block entirely. One bad value replaces the whole palette, matching the rule
+    the contract already applies upstream: partial palettes look broken.
+    """
+    values = palette.model_dump()
+    if all(_HEX_RE.match(v) for v in values.values()):
+        return palette
+    return Palette(**DEFAULT_PALETTE)
+
+
 def build_css_vars(theme: Theme) -> dict[str, str]:
-    p = theme.palette
+    p = _safe_palette(theme.palette)
     fonts = FONT_PAIRS.get(theme.font_pair, FONT_PAIRS["geometric"])
     radii = RADIUS_SCALES.get(theme.radius, RADIUS_SCALES["soft"])
     mood = MOOD_STYLES.get(theme.mood, MOOD_STYLES["corporate"])

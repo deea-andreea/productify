@@ -6,10 +6,11 @@ pulled and open offline from a downloaded file.
 """
 
 import base64
+import html
 import io
 import re
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 MAX_PHOTO_EDGE = 1200
 PHOTO_JPEG_QUALITY = 82
@@ -43,6 +44,10 @@ def icon_svg(icon_hint: str) -> str:
 
 def embed_photo(photo_bytes: bytes) -> str:
     img = Image.open(io.BytesIO(photo_bytes))
+    # Phone photos are usually stored landscape with an EXIF Orientation tag.
+    # Re-encoding drops that tag, so the rotation has to be baked into the
+    # pixels here or a portrait photo ships sideways.
+    img = ImageOps.exif_transpose(img)
     img = img.convert("RGB")
     img.thumbnail((MAX_PHOTO_EDGE, MAX_PHOTO_EDGE))
     buf = io.BytesIO()
@@ -58,7 +63,12 @@ def _initials(brand_name: str) -> str:
 
 
 def monogram_svg(brand_name: str, accent: str, accent_contrast: str) -> str:
+    # _initials() already strips this to at most two alphanumerics, so it is
+    # safe to interpolate; the colours are escaped defensively because these
+    # strings are handed to the template with |safe.
     initials = _initials(brand_name)
+    accent = html.escape(accent, quote=True)
+    accent_contrast = html.escape(accent_contrast, quote=True)
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
         f'<rect width="100" height="100" rx="20" fill="{accent}"/>'
@@ -77,27 +87,48 @@ def monogram_data_uri(brand_name: str, accent: str, accent_contrast: str) -> str
 def embed_logo_markup(brand_name: str, accent: str, accent_contrast: str, logo_bytes: bytes | None) -> str:
     """Real logo if we have one, otherwise an inline SVG monogram — the page
     must look finished before Station 1's async logo call lands."""
+    # The template renders this with |safe, so autoescape does not apply here.
+    # brand_name came out of a language model and may contain quotes or tags:
+    # escape it explicitly or it breaks out of the attribute.
+    alt = html.escape(f"{brand_name} logo", quote=True)
     if logo_bytes:
         img = Image.open(io.BytesIO(logo_bytes)).convert("RGBA")
         img.thumbnail((MAX_LOGO_EDGE, MAX_LOGO_EDGE))
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         data = base64.b64encode(buf.getvalue()).decode("ascii")
-        return f'<img class="pf-logo" src="data:image/png;base64,{data}" alt="{brand_name} logo">'
+        return f'<img class="pf-logo" src="data:image/png;base64,{data}" alt="{alt}">'
     svg = monogram_svg(brand_name, accent, accent_contrast)
-    return f'<span class="pf-logo pf-logo-monogram" role="img" aria-label="{brand_name} logo">{svg}</span>'
+    return f'<span class="pf-logo pf-logo-monogram" role="img" aria-label="{alt}">{svg}</span>'
 
 
-_ASSET_ATTR_RE = re.compile(r'(?:src|href)\s*=\s*"([^"]*)"', re.IGNORECASE)
+_ASSET_ATTR_RE = re.compile(
+    # double-quoted, single-quoted, or bare — a future edit using single quotes
+    # must not slip past the only check enforcing the offline guarantee.
+    r'(?:src|srcset|href|poster|data-src)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s>]+))',
+    re.IGNORECASE,
+)
 _URL_FN_RE = re.compile(r'url\(\s*[\'"]?([^\'")]+)[\'"]?\s*\)', re.IGNORECASE)
+_IMPORT_RE = re.compile(r'@import\s+(?:url\()?[\'"]?([^\'")\s;]+)', re.IGNORECASE)
 
 
-def assert_self_contained(html: str) -> None:
-    """Scan every src=, href= and url() value; raise if anything isn't
-    data:, a same-page #anchor, or empty. Fail loudly rather than ship a
-    page that breaks the moment it's opened offline on stage."""
-    for match in list(_ASSET_ATTR_RE.finditer(html)) + list(_URL_FN_RE.finditer(html)):
-        value = match.group(1).strip()
+def assert_self_contained(page_html: str) -> None:
+    """Scan every src=, href=, url() and @import value; raise if anything
+    isn't data:, a same-page #anchor, or empty. Fail loudly rather than ship a
+    page that breaks the moment it's opened offline on stage.
+
+    The parameter is deliberately not named `html` — that would shadow the
+    stdlib module this file imports for escaping.
+    """
+    matches = (
+        list(_ASSET_ATTR_RE.finditer(page_html))
+        + list(_URL_FN_RE.finditer(page_html))
+        + list(_IMPORT_RE.finditer(page_html))
+    )
+    for match in matches:
+        # _ASSET_ATTR_RE has three alternatives (double/single/bare quoted), so
+        # take whichever group actually captured rather than assuming group 1.
+        value = next((g for g in match.groups() if g is not None), "").strip()
         if not value:
             continue
         if value.startswith("data:") or value.startswith("#"):

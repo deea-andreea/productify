@@ -13,6 +13,7 @@ import json
 import sys
 import time
 import webbrowser
+from html import escape
 from io import BytesIO
 from pathlib import Path
 
@@ -35,17 +36,23 @@ def _placeholder_photo() -> bytes:
     return buf.getvalue()
 
 
+class BadFixture(Exception):
+    """A fixture or bundle that cannot be rendered. Raised rather than exiting
+    so --all can skip one bad file and still produce the comparison index."""
+
+
 def _load_bundle_dir(path: Path) -> tuple[ContentPack, bytes, bytes | None, str]:
     bundle_path = path / "bundle.json"
     if not bundle_path.exists():
-        print(f"error: {path} has no bundle.json — not a valid bundle", file=sys.stderr)
-        sys.exit(1)
-    data = json.loads(bundle_path.read_text(encoding="utf-8"))
+        raise BadFixture(f"{path} has no bundle.json — not a valid bundle")
+    try:
+        data = json.loads(bundle_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise BadFixture(f"{bundle_path} is not valid JSON — {exc}") from exc
     try:
         pack = ContentPack.model_validate(data["pack"])
-    except (KeyError, ValidationError) as exc:
-        print(f"error: {path} is not a valid bundle — {exc}", file=sys.stderr)
-        sys.exit(1)
+    except (KeyError, TypeError, ValidationError) as exc:
+        raise BadFixture(f"{path} is not a valid bundle — {exc}") from exc
     photo_path = path / "photo.jpg"
     photo_bytes = photo_path.read_bytes() if photo_path.exists() else _placeholder_photo()
     logo_path = path / "logo.png"
@@ -54,12 +61,17 @@ def _load_bundle_dir(path: Path) -> tuple[ContentPack, bytes, bytes | None, str]
 
 
 def _load_bare_json(path: Path) -> tuple[ContentPack, bytes, bytes | None, str]:
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise BadFixture(f"{path} is not valid JSON — {exc}") from exc
+    # Accept a bundle.json that was pointed at directly, not just a bare pack.
+    if isinstance(data, dict) and "pack" in data:
+        data = data["pack"]
     try:
         pack = ContentPack.model_validate(data)
-    except ValidationError as exc:
-        print(f"error: {path} is not a valid ContentPack — {exc}", file=sys.stderr)
-        sys.exit(1)
+    except (TypeError, ValidationError) as exc:
+        raise BadFixture(f"{path} is not a valid ContentPack — {exc}") from exc
     return pack, _placeholder_photo(), None, path.stem
 
 
@@ -89,7 +101,10 @@ def _discover_all() -> list[Path]:
 
 
 def _write_index(rendered: list[Path]) -> Path:
-    items = "\n".join(f'<li><a href="{p.name}" target="preview">{p.stem}</a></li>' for p in rendered)
+    items = "\n".join(
+        f'<li><a href="{escape(p.name, quote=True)}" target="preview">{escape(p.stem)}</a></li>'
+        for p in rendered
+    )
     index_path = PREVIEW_DIR / "index.html"
     index_path.write_text(
         "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Productify previews</title>"
@@ -103,22 +118,60 @@ def _write_index(rendered: list[Path]) -> Path:
     return index_path
 
 
+def _watch_targets(path: Path) -> list[Path]:
+    """The fixture plus the render sources. Watching only the fixture would miss
+    the files this loop actually exists to iterate on — the template and theme.
+    """
+    render_dir = Path(__file__).parent
+    targets = [path / "bundle.json" if path.is_dir() else path]
+    targets += [render_dir / name for name in ("template.html", "theme.py", "package.py", "__init__.py")]
+    return [t for t in targets if t.exists()]
+
+
+def _fingerprint(paths: list[Path]) -> dict[Path, float]:
+    return {p: p.stat().st_mtime for p in paths if p.exists()}
+
+
 def _watch(path: Path) -> None:
-    watched = path / "bundle.json" if path.is_dir() else path
-    print(f"watching {watched} for changes (Ctrl+C to stop)...")
+    watched = _watch_targets(path)
+    print("watching for changes (Ctrl+C to stop):")
+    for w in watched:
+        print(f"  {w}")
     _render_one(path)
-    last_mtime = watched.stat().st_mtime if watched.exists() else None
+    last = _fingerprint(watched)
     try:
         while True:
             time.sleep(1)
-            if not watched.exists():
-                continue
-            mtime = watched.stat().st_mtime
-            if mtime != last_mtime:
-                last_mtime = mtime
-                _render_one(path)
+            current = _fingerprint(watched)
+            if current != last:
+                changed = [p.name for p in current if last.get(p) != current[p]]
+                last = current
+                print(f"changed: {', '.join(changed)}")
+                try:
+                    _reload_render()
+                    _render_one(path)
+                except BadFixture as exc:
+                    print(f"error: {exc}", file=sys.stderr)
+                except Exception as exc:  # keep the loop alive across a broken edit
+                    print(f"render failed: {exc}", file=sys.stderr)
     except KeyboardInterrupt:
         pass
+
+
+def _reload_render() -> None:
+    """Re-import the render package so template/theme edits take effect without
+    restarting the watcher."""
+    import importlib
+
+    from app.render import package as package_mod
+    from app.render import theme as theme_mod
+
+    importlib.reload(theme_mod)
+    importlib.reload(package_mod)
+    import app.render
+
+    importlib.reload(app.render)
+    globals()["render_pitch"] = app.render.render_pitch
 
 
 def main() -> None:
@@ -134,9 +187,23 @@ def main() -> None:
         if not targets:
             print("no bundles or fixtures found under fixtures/", file=sys.stderr)
             sys.exit(1)
-        rendered = [_render_one(t) for t in targets]
+        # Skip anything unrenderable rather than aborting: fixtures/ belongs to
+        # Station 1 and one unrelated .json must not cost us the whole
+        # four-tone comparison index.
+        rendered: list[Path] = []
+        skipped: list[str] = []
+        for t in targets:
+            try:
+                rendered.append(_render_one(t))
+            except BadFixture as exc:
+                skipped.append(str(exc))
+        for message in skipped:
+            print(f"skipped: {message}", file=sys.stderr)
+        if not rendered:
+            print("nothing could be rendered", file=sys.stderr)
+            sys.exit(1)
         index_path = _write_index(rendered)
-        print(f"wrote {index_path} linking {len(rendered)} previews")
+        print(f"wrote {index_path} linking {len(rendered)} previews" + (f", skipped {len(skipped)}" if skipped else ""))
         if args.open:
             webbrowser.open(index_path.resolve().as_uri())
         return
@@ -149,11 +216,17 @@ def main() -> None:
         print(f"error: {path} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    if args.watch:
-        _watch(path)
-        return
+    # A single explicit target still fails loudly — if a bundle Station 1 handed
+    # over is malformed I want to know instantly and tell them, not debug my CSS.
+    try:
+        if args.watch:
+            _watch(path)
+            return
+        out_path = _render_one(path)
+    except BadFixture as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
 
-    out_path = _render_one(path)
     if args.open:
         webbrowser.open(out_path.resolve().as_uri())
 

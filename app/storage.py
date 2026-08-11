@@ -57,6 +57,41 @@ def save_pitch(
     return d
 
 
+def photo_path(slug: str) -> Path:
+    return pitch_dir(slug) / "photo.jpg"
+
+
+def html_path(slug: str) -> Path:
+    return pitch_dir(slug) / "index.html"
+
+
+def load_html(slug: str) -> str | None:
+    p = html_path(slug)
+    return p.read_text(encoding="utf-8") if p.exists() else None
+
+
+def load_photo(slug: str) -> bytes | None:
+    p = photo_path(slug)
+    return p.read_bytes() if p.exists() else None
+
+
+def overwrite_html(slug: str, html: str) -> None:
+    """The logo re-render replaces index.html in place. save_pitch is safe to call
+    twice, but the background task only has new HTML — not a new photo."""
+    html_path(slug).write_text(html, encoding="utf-8")
+
+
+def update_meta(slug: str, **fields: Any) -> dict[str, Any] | None:
+    """Read-modify-write a single pitch's meta.json. Each pitch has its own file,
+    so two concurrent uploads touch different files and cannot corrupt each other."""
+    meta = load_meta(slug)
+    if meta is None:
+        return None
+    meta.update(fields)
+    save_meta(slug, meta)
+    return meta
+
+
 def save_meta(slug: str, meta: dict[str, Any]) -> None:
     (pitch_dir(slug) / "meta.json").write_text(
         json.dumps(meta, indent=2, ensure_ascii=False), encoding="utf-8"
